@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HIDAYATUL QUR'AN TIMER - SENDER</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: Arial, sans-serif; }
+        body { background: #f0f2f5; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+        .container { width: 420px; background: white; padding: 25px; border-radius: 25px; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,.3); }
+        .school-name { font-size: 20px; font-weight: bold; color: #006400; margin-bottom: 15px; }
+        .logo { width: 120px; height: 120px; object-fit: contain; margin-bottom: 20px; }
+        .timer-container { position: relative; width: 260px; height: 260px; margin: auto; }
+        .timer-svg { transform: rotate(-90deg); }
+        .timer-text { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 35px; font-weight: bold; color: #333; }
+        input { width: 80px; padding: 10px; font-size: 20px; text-align: center; border: 2px solid #0b8c38; border-radius: 10px; }
+        .start-btn { margin-top: 15px; padding: 12px 30px; font-size: 20px; border: none; border-radius: 10px; background: #0b8c38; color: white; cursor: pointer; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="school-name">HIDAYATUL QUR'AN LITAHFIZ JALINGO</div>
+    <img src="logo.png" class="logo">
+
+    <div class="timer-container">
+        <svg class="timer-svg" width="260" height="260">
+            <circle cx="130" cy="130" r="110" stroke="#ddd" stroke-width="12" fill="none" />
+            <circle id="progressCircle" cx="130" cy="130" r="110" stroke="green" stroke-width="12" fill="none" stroke-linecap="round" stroke-dasharray="691" stroke-dashoffset="0" />
+        </svg>
+        <div id="timerText" class="timer-text">00:00:00</div>
+    </div>
+
+    <div style="margin-top:20px;">
+        <input id="hoursInput" type="number" value="0" min="0">
+        <input id="minutesInput" type="number" value="0" min="0" max="59">
+        <input id="secondsInput" type="number" value="0" min="0" max="59">
+    </div>
+
+    <button class="start-btn" onclick="startTimer()">START</button>
+    <button class="start-btn" style="background:red; margin-left:10px" onclick="cancelTimer()">CANCEL</button>
+
+    <audio id="alarmSound" src="timeup.mp3" preload="auto"></audio>
+</div>
+
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.15.0/firebase-app.js";
+    import { getFirestore, doc, setDoc } from "https://www.gstatic.com/firebasejs/12.15.0/firebase-firestore.js";
+
+    const firebaseConfig = {
+        apiKey: "AIzaSyD-EKc2oZ3rsMgd7frfyBXLz5an0-8PR24",
+        authDomain: "hidayatul-qur-an-timer.firebaseapp.com",
+        projectId: "hidayatul-qur-an-timer",
+        storageBucket: "hidayatul-qur-an-timer.firebasestorage.app",
+        messagingSenderId: "1093743817839",
+        appId: "1:1093743817839:web:8b39b8adbc485e8773499a"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    let timerInterval = null;
+
+    window.startTimer = function() {
+        if (timerInterval) clearInterval(timerInterval);
+
+        const hoursInput = document.getElementById("hoursInput");
+        const minutesInput = document.getElementById("minutesInput");
+        const secondsInput = document.getElementById("secondsInput");
+        const timerText = document.getElementById("timerText");
+        const progressCircle = document.getElementById("progressCircle");
+        const alarmSound = document.getElementById("alarmSound");
+
+        alarmSound.play().then(() => {
+            alarmSound.pause();
+            alarmSound.currentTime = 0;
+        }).catch((e) => console.log("Autoplay check: ", e));
+
+        let totalSeconds = (parseInt(hoursInput.value || 0) * 3600) + 
+                           (parseInt(minutesInput.value || 0) * 60) + 
+                           parseInt(secondsInput.value || 0);
+
+        if (totalSeconds <= 0) {
+            alert("Don Allah saka ainihin lokacin da kake so ka kaddamar!");
+            return;
+        }
+
+        let remaining = totalSeconds;
+
+        timerInterval = setInterval(async () => {
+            let h = Math.floor(remaining / 3600);
+            let m = Math.floor((remaining % 3600) / 60);
+            let s = remaining % 60;
+
+            timerText.innerText = 
+                String(h).padStart(2, "0") + ":" + 
+                String(m).padStart(2, "0") + ":" + 
+                String(s).padStart(2, "0");
+
+            progressCircle.style.strokeDashoffset = 691 - ((remaining / totalSeconds) * 691);
+
+            if (remaining <= 0) {
+                clearInterval(timerInterval);
+                
+                alarmSound.currentTime = 0;
+                alarmSound.play().catch((e) => console.log("Sauti ya gaza: ", e));
+
+                try {
+                    await setDoc(doc(db, "alerts", "timeup"), {
+                        message: "TIME_UP",
+                        time: Date.now()
+                    });
+                } catch (error) {
+                    console.error("Firebase error:", error);
+                }
+            }
+
+            remaining--;
+        }, 1000);
+    };
+
+    window.cancelTimer = function() {
+        if (timerInterval) clearInterval(timerInterval);
+
+        const hoursInput = document.getElementById("hoursInput");
+        const minutesInput = document.getElementById("minutesInput");
+        const secondsInput = document.getElementById("secondsInput");
+        const timerText = document.getElementById("timerText");
+        const progressCircle = document.getElementById("progressCircle");
+        const alarmSound = document.getElementById("alarmSound");
+
+        alarmSound.pause();
+        alarmSound.currentTime = 0;
+
+        // An mayar da duka inputs din zuwa 0
+        hoursInput.value = 0;
+        minutesInput.value = 0;
+        secondsInput.value = 0;
+
+        timerText.innerText = "00:00:00";
+        progressCircle.style.strokeDashoffset = 0;
+
+        setDoc(doc(db, "alerts", "timeup"), {
+            message: "RESET",
+            time: Date.now()
+        }).catch((e) => console.error("Firebase RESET error:", e));
+    };
+</script>
+</body>
+</html>
