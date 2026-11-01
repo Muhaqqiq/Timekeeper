@@ -44,107 +44,172 @@
 </div>
 
 <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.15.0/firebase-app.js";
-    import { getFirestore, doc, setDoc } from "https://www.gstatic.com/firebasejs/12.15.0/firebase-firestore.js";
+    
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.15.0/firebase-app.js";
+import {
+    getFirestore,
+    doc,
+    setDoc
+} from "https://www.gstatic.com/firebasejs/12.15.0/firebase-firestore.js";
 
-    const firebaseConfig = {
-        apiKey: "AIzaSyD-EKc2oZ3rsMgd7frfyBXLz5an0-8PR24",
-        authDomain: "hidayatul-qur-an-timer.firebaseapp.com",
-        projectId: "hidayatul-qur-an-timer",
-        storageBucket: "hidayatul-qur-an-timer.firebasestorage.app",
-        messagingSenderId: "1093743817839",
-        appId: "1:1093743817839:web:8b39b8adbc485e8773499a"
-    };
+const firebaseConfig = {
+    apiKey: "AIzaSyD-EK2c oZ3rsMgd7frfyBXLz5an0-8PR24".replace(" ", ""),
+    authDomain: "hidayatul-qur-an-timer.firebaseapp.com",
+    projectId: "hidayatul-qur-an-timer",
+    storageBucket: "hidayatul-qur-an-timer.firebasestorage.app",
+    messagingSenderId: "1093743817839",
+    appId: "1:1093743817839:web:8b39b8adbc485e8773499a"
+};
 
-    const app = initializeApp(firebaseConfig);
-    const db = getFirestore(app);
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+const alertRef = doc(db, "alerts", "timeup");
 
-    let timerInterval = null;
+let timerInterval = null;
+let endTime = 0;
+let totalSeconds = 0;
+let timerFinished = false;
 
-    window.startTimer = function() {
-        if (timerInterval) clearInterval(timerInterval);
+const hoursInput = document.getElementById("hoursInput");
+const minutesInput = document.getElementById("minutesInput");
+const secondsInput = document.getElementById("secondsInput");
 
-        const hoursInput = document.getElementById("hoursInput");
-        const minutesInput = document.getElementById("minutesInput");
-        const secondsInput = document.getElementById("secondsInput");
-        const timerText = document.getElementById("timerText");
-        const progressCircle = document.getElementById("progressCircle");
-        const alarmSound = document.getElementById("alarmSound");
+const timerText = document.getElementById("timerText");
+const progressCircle = document.getElementById("progressCircle");
+const alarmSound = document.getElementById("alarmSound");
 
-        alarmSound.play().then(() => {
-            alarmSound.pause();
-            alarmSound.currentTime = 0;
-        }).catch((e) => console.log("Autoplay check: ", e));
+const CIRCUMFERENCE = 691;
 
-        let totalSeconds = (parseInt(hoursInput.value || 0) * 3600) + 
-                           (parseInt(minutesInput.value || 0) * 60) + 
-                           parseInt(secondsInput.value || 0);
+function updateDisplay(remaining) {
+    const h = Math.floor(remaining / 3600);
+    const m = Math.floor((remaining % 3600) / 60);
+    const s = remaining % 60;
 
-        if (totalSeconds <= 0) {
-            alert("Don Allah saka ainihin lokacin da kake so ka kaddamar!");
-            return;
-        }
+    timerText.innerText =
+        String(h).padStart(2, "0") + ":" +
+        String(m).padStart(2, "0") + ":" +
+        String(s).padStart(2, "0");
 
-        let remaining = totalSeconds;
+    progressCircle.style.strokeDashoffset =
+        CIRCUMFERENCE -
+        ((remaining / totalSeconds) * CIRCUMFERENCE);
+}
+
+function stopInterval() {
+    if (timerInterval !== null) {
+        clearInterval(timerInterval);
+        timerInterval = null;
+    }
+}
+
+async function startTimer() {
+    stopInterval();
+
+    const h = Number(hoursInput.value) || 0;
+    const m = Number(minutesInput.value) || 0;
+    const s = Number(secondsInput.value) || 0;
+
+    if (
+        h < 0 || m < 0 || s < 0 ||
+        m > 59 || s > 59 ||
+        !Number.isInteger(h) ||
+        !Number.isInteger(m) ||
+        !Number.isInteger(s)
+    ) {
+        alert("Please enter valid time values.");
+        return;
+    }
+
+    totalSeconds = (h * 3600) + (m * 60) + s;
+
+    if (totalSeconds <= 0) {
+        alert("Don Allah saka lokacin da kake so.");
+        return;
+    }
+
+    timerFinished = false;
+    endTime = Date.now() + totalSeconds * 1000;
+
+    alarmSound.pause();
+    alarmSound.currentTime = 0;
+
+    try {
+        // Notify Receiver that a new timer has started
+        await setDoc(alertRef, {
+            message: "RUNNING",
+            time: Date.now()
+        });
+
+        updateDisplay(totalSeconds);
 
         timerInterval = setInterval(async () => {
-            let h = Math.floor(remaining / 3600);
-            let m = Math.floor((remaining % 3600) / 60);
-            let s = remaining % 60;
+            const remaining = Math.max(
+                0,
+                Math.ceil((endTime - Date.now()) / 1000)
+            );
 
-            timerText.innerText = 
-                String(h).padStart(2, "0") + ":" + 
-                String(m).padStart(2, "0") + ":" + 
-                String(s).padStart(2, "0");
+            updateDisplay(remaining);
 
-            progressCircle.style.strokeDashoffset = 691 - ((remaining / totalSeconds) * 691);
+            if (remaining <= 0 && !timerFinished) {
+                timerFinished = true;
+                stopInterval();
 
-            if (remaining <= 0) {
-                clearInterval(timerInterval);
-                
                 alarmSound.currentTime = 0;
-                alarmSound.play().catch((e) => console.log("Sauti ya gaza: ", e));
+                alarmSound.play().catch(console.error);
 
                 try {
-                    await setDoc(doc(db, "alerts", "timeup"), {
+                    await setDoc(alertRef, {
                         message: "TIME_UP",
                         time: Date.now()
                     });
+
+                    console.log("TIME UP sent successfully!");
+
                 } catch (error) {
-                    console.error("Firebase error:", error);
+                    console.error("TIME UP Firebase error:", error);
+                    alert("An kasa aika TIME UP zuwa Receiver.");
                 }
             }
+        }, 200);
 
-            remaining--;
-        }, 1000);
-    };
+    } catch (error) {
+        console.error("START Firebase error:", error);
+        alert("An kasa haɗawa da Firebase. Duba internet.");
+    }
+}
 
-    window.cancelTimer = function() {
-        if (timerInterval) clearInterval(timerInterval);
+async function cancelTimer() {
+    stopInterval();
+    timerFinished = false;
 
-        const hoursInput = document.getElementById("hoursInput");
-        const minutesInput = document.getElementById("minutesInput");
-        const secondsInput = document.getElementById("secondsInput");
-        const timerText = document.getElementById("timerText");
-        const progressCircle = document.getElementById("progressCircle");
-        const alarmSound = document.getElementById("alarmSound");
+    alarmSound.pause();
+    alarmSound.currentTime = 0;
 
-        alarmSound.pause();
-        alarmSound.currentTime = 0;
+    hoursInput.value = 0;
+    minutesInput.value = 0;
+    secondsInput.value = 0;
 
-        // An mayar da duka inputs din zuwa 0
-        hoursInput.value = 0;
-        minutesInput.value = 0;
-        secondsInput.value = 0;
+    totalSeconds = 0;
+    timerText.innerText = "00:00:00";
+    progressCircle.style.strokeDashoffset = 0;
 
-        timerText.innerText = "00:00:00";
-        progressCircle.style.strokeDashoffset = 0;
-
-        setDoc(doc(db, "alerts", "timeup"), {
+    try {
+        await setDoc(alertRef, {
             message: "RESET",
             time: Date.now()
-        }).catch((e) => console.error("Firebase RESET error:", e));
-    };
+        });
+
+        console.log("Timer RESET successfully!");
+
+    } catch (error) {
+        console.error("RESET Firebase error:", error);
+        alert("An kasa aika RESET zuwa Receiver.");
+    }
+}
+
+window.startTimer = startTimer;
+window.cancelTimer = cancelTimer;
+                
 </script>
 </body>
 </html>
